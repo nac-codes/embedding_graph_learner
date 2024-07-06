@@ -1,0 +1,7 @@
+numpy
+networkx
+scipy
+tqdm
+argparse
+openai
+nltk
