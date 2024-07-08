@@ -153,6 +153,10 @@ def learn_mode(G, graph_filename, visited=None, context=None):
     stack = []
 
     def dfs(node, depth=0):
+        # display progress 
+        print(f"\nProgress:")
+        print(f"[{'=' * int(len(visited) / len(G.nodes()) * 20)}{' ' * (20 - int(len(visited) / len(G.nodes()) * 20))}] {len(visited)}/{len(G.nodes())}")
+
         visited.add(node)
         path.append(node)
         print(f"\n{'  ' * depth}Exploring node {node}")
@@ -172,12 +176,17 @@ def learn_mode(G, graph_filename, visited=None, context=None):
         Current content:
         {content}
 
-        Give context for the quote, be detailed in your explanationa and in connecting it to the previous context or other things of note.
+        Give context for the quote. Define unusual terms/events/places/people. Be detailed in your explanation and in connecting it to the previous context or other things of note.
         """
 
-        explanation = query_openai(prompt)
-        print("\nExplanation:")
-        print(explanation)
+        # ask user if they want to continue with explanation if n then skip query openai if else then continue
+
+        if input("Do you want to continue with the explanation? (y/n): ").lower() == 'n':
+            explanation = ""
+        else:
+            explanation = query_openai(prompt)
+            print("\nExplanation:")
+            print(explanation)
 
         context.append(f"Node {node}: {content}\nExplanation: {explanation}")
         save_progress(graph_filename, 0, "learn", visited, 0, 0, context, silent=True)
