@@ -83,7 +83,9 @@ def query_openai(prompt, model_name="gpt-4", assistant_instructions="You are a h
     return completion.choices[0].message.content
 
 def save_progress(graph_filename, visited, context, silent=False):
-    save_filename = f"{os.path.splitext(graph_filename)[0]}_learn_progress.json"
+    graph_filename = os.path.basename(graph_filename)
+
+    save_filename = f"progress/{os.path.splitext(graph_filename)[0]}_learn_progress.json"
     data = {
         "visited": list(visited),
         "context": list(context)
@@ -94,7 +96,8 @@ def save_progress(graph_filename, visited, context, silent=False):
         print(f"Progress saved to {save_filename}")
 
 def load_progress(graph_filename):
-    save_filename = f"{os.path.splitext(graph_filename)[0]}_learn_progress.json"
+    graph_filename = os.path.basename(graph_filename)
+    save_filename = f"progress/{os.path.splitext(graph_filename)[0]}_learn_progress.json"
     if os.path.exists(save_filename):
         with open(save_filename, 'r') as f:
             data = json.load(f)
@@ -133,10 +136,19 @@ def learn_mode(G, graph_filename, visited=None, context=None, model_name="bert")
         content = G.nodes[node]['content']
         context_str = "\n".join(context)
 
+        print("File: ", G.nodes[node]['file'])
+
+        # get author title and date from the basename of the file format: AUTHOR_TITLE TITLE_TITLE TITLE_DATE
+        file_parts = G.nodes[node]['file'].split("_")
+        author = file_parts[0]
+        title = " ".join(file_parts[1:-1])
+        date = file_parts[-1]
+
+
         print(f"\nContent: {content}")
 
         prompt = f"""
-        The author of the content is Haywood S. Hansell, Major General USAF. The book the content is from is The Strategic Air War against Germany and Japan.
+        The author of the content is {author}. The book the content is from is {title}. The publication date is {date}.
 
         Previous context:
         {context_str}
@@ -213,7 +225,8 @@ def main():
     visited, context = load_progress(args.graph_file)
     print("\nStarting learn mode...")
     #strip the graph file for the model name so it's embedding_graph_{model name}.gpickle
-    model_name = args.graph_file.split("_")[2].split(".")[0]
+    items = args.graph_file.split("_")
+    model_name = items[-1].split(".")[0]
     learn_mode(G, args.graph_file, visited, context, model_name)
 
     if len(visited) == len(G.nodes()):

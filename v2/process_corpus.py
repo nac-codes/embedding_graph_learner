@@ -67,14 +67,16 @@ def main():
     parser.add_argument("--model", choices=["bert", "openai-gpt"], default="bert", help="Choose the model for embeddings")
     parser.add_argument("--chunk-size", type=int, default=1000, help="Size of text chunks")
     parser.add_argument("--overlap-ratio", type=float, default=0.1, help="Overlap ratio between chunks (0.0 to 1.0)")
+    parser.add_argument("--file-path", default="corpus.txt", help="Path to the input corpus file: default is 'corpus.txt'")
     args = parser.parse_args()
 
     model_name = args.model
     chunk_size = args.chunk_size
     overlap_ratio = args.overlap_ratio
-    file_path = "corpus.txt"
-    chunk_data_file = f'chunks_data_{model_name}.npy'
-    chunk_embeddings_file = f'chunks_embeddings_{model_name}.npy'
+    file_path = args.file_path
+    file_name = file_path.split('/')[-1]
+    chunk_data_file = f'chunks_data_{model_name}_{file_name}.npy'
+    chunk_embeddings_file = f'chunks_embeddings_{model_name}_{file_name}.npy'
 
     tokenizer = None
     model = None

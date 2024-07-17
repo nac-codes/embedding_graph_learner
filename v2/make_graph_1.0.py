@@ -51,10 +51,12 @@ if __name__ == "__main__":
     # take in arg of model name
     parser = argparse.ArgumentParser(description="Process corpus and create embeddings")
     parser.add_argument("--model", choices=["bert", "openai-gpt"], default="bert", help="Choose the model for embeddings")
+    parser.add_argument("--similarity-threshold", type=float, default=0.7, help="Similarity threshold for creating edges in the graph")
+    parser.add_argument("--file-name", default="corpus.txt", help="Filename of the input corpus file")
     args = parser.parse_args()
 
-    chunk_data = np.load(f"chunks_data_{args.model}.npy", allow_pickle=True)
-    chunk_embeddings = np.load(f"chunks_embeddings_{args.model}.npy")
+    chunk_data = np.load(f"chunks/chunks_data_{args.model}_{args.file_name}.npy", allow_pickle=True)
+    chunk_embeddings = np.load(f"chunks/chunks_embeddings_{args.model}_{args.file_name}.npy")
 
     # get args for similarity threshold and cosine weight
     similarity_threshold = 0.85
@@ -63,7 +65,7 @@ if __name__ == "__main__":
     G = create_embedding_graph(chunk_data, chunk_embeddings, similarity_threshold)
 
     print("Saving the graph...")
-    save_graph(G, f"embedding_graph_{args.model}.gpickle")
+    save_graph(G, f"graphs/embedding_graph_{args.model}.gpickle")
 
     print(f"Graph created and saved as embedding_graph_{args.model}.gpickle")
 
