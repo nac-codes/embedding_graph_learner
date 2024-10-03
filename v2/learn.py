@@ -72,7 +72,7 @@ def get_embedding(text, model_name, tokenizer=None, model=None, client=None):
 def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-def query_openai(prompt, model_name="gpt-4", assistant_instructions="You are a helpful assistant."):
+def query_openai(prompt, model_name="gpt-4o", assistant_instructions="You are a helpful assistant."):
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
@@ -134,15 +134,27 @@ def learn_mode(G, graph_filename, visited=None, context=None, model_name="bert")
         print(f"\nExploring node {node}")
 
         content = G.nodes[node]['content']
-        context_str = "\n".join(context)
+        # give the most recent context, it's just a    
+        if len(context) > 2:
+            context_str = context[-2]
+        else:
+            context_str = context
 
         print("File: ", G.nodes[node]['file'])
+        # print page and author and title and date 
+        print("Page(s): ", G.nodes[node]['pages'])
+
 
         # get author title and date from the basename of the file format: AUTHOR_TITLE TITLE_TITLE TITLE_DATE
         file_parts = G.nodes[node]['file'].split("_")
         author = file_parts[0]
         title = " ".join(file_parts[1:-1])
         date = file_parts[-1]
+
+        print("Author: ", author)
+        print("Title: ", title)
+        print("Date: ", date)
+
 
 
         print(f"\nContent: {content}")
@@ -191,7 +203,7 @@ def learn_mode(G, graph_filename, visited=None, context=None, model_name="bert")
 
         if user_input.strip():
             # query open ai to make the user input into a keyword query
-            prompt = f"Generate a query for a cosine similarity search from the following text: {user_input}"
+            prompt = f"Create a sentence that encapsulates the desired content from the following request, only return the sentence: {user_input}. \n\n Consider the context of the conversation: {context[-1]}"
             user_input = query_openai(prompt)
             print("\nKeyword query:", user_input)
 
@@ -200,14 +212,19 @@ def learn_mode(G, graph_filename, visited=None, context=None, model_name="bert")
         else:
             # set next node to be a random child of the current node
             # if there are no children, set next node to be a random unvisited node
-            next_node = random.choice(list(G.neighbors(current_node))) if G.neighbors(current_node) else random.choice(list(unvisited))
-            print(f"\nContinuing with the current exploration path.")
+            # check if there are any neighbors of the current node, check if the list is empty
+            if list(G.neighbors(current_node)) != []:
+                next_node = random.choice(list(G.neighbors(current_node)))
+                print(f"\nContinuing with the current exploration path.")
+            else:
+                next_node = random.choice(list(unvisited))
+                print(f"\nExploring a random unvisited node.")
 
         current_node = explore_node(next_node)
 
         
 
-    print("\nLearning session complete!")
+    print("\nLearning session complete")
     print(f"Total nodes explored: {len(visited)}")
     print(f"Total nodes in graph: {len(G.nodes())}")
 

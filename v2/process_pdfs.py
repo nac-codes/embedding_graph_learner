@@ -50,6 +50,9 @@ def extract_text_from_pdf(pdf_path, output_text_path, pdf_filename):
                 file_out.write(f"File: --- {pdf_filename} --- Page {page_num + 1} ---\n{text.strip()}\n\n")
 
 def extract_metadata(text, filename):
+    # Mierzejewski, Alfred C.. The Collapse of the German War Economy, 1944-1945: Allied Air Power and the German National Railway. The University of North Carolina Press. Kindle Edition. 
+
+
     prompt = f"""
     Based on the following text extracted from a PDF and its filename, please extract the author name, title, and publication date. If you can't find a specific piece of information, use 'Unknown' for that field.
 

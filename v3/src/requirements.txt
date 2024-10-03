@@ -1,0 +1,9 @@
+numpy
+networkx
+scikit-learn
+tqdm
+pypdf2
+pytesseract
+pdf2image
+pillow
+openai

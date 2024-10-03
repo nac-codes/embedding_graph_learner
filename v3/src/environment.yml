@@ -1,0 +1,17 @@
+name: quizzer_v3_env
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy
+  - networkx
+  - scikit-learn
+  - tqdm
+  - pypdf2
+  - pytesseract
+  - pdf2image
+  - pillow
+  - pip
+  - pip:
+      - openai

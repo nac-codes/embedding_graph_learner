@@ -201,7 +201,7 @@ def process_pdf(pdf_filename, chunk_size, overlap_ratio):
 
 def main():
     parser = argparse.ArgumentParser(description="Process PDF and create embeddings")
-    parser.add_argument("--chunk-size", type=int, default=1000, help="Size of text chunks")
+    parser.add_argument("--chunk-size", type=int, default=2000, help="Size of text chunks")
     parser.add_argument("--overlap-ratio", type=float, default=0.1, help="Overlap ratio between chunks (0.0 to 1.0)")
     parser.add_argument("--pdf-dir", default=".", help="Directory containing PDF files")
     args = parser.parse_args()
