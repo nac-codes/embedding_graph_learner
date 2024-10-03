@@ -43,7 +43,8 @@ fi
 
 # Run make_graph.py
 echo "Step 3: Running make_graph.py"
-python3 "$ROOT_DIR/make_graph.py" --corpora-dir "$CORPORA_DIR" --output "corpora_graph.gpickle"
+python3 "$ROOT_DIR/make_graph.py" --corpora-dir "$CORPORA_DIR" --output "$CORPORA_DIR/corpora_graph.gpickle"
+# python3 "$ROOT_DIR/make_graph.py" --corpora-dir "$CORPORA_DIR" --output "corpora_graph.gpickle"
 
 # Check if the previous command was successful
 if [ $? -ne 0 ]; then

@@ -55,14 +55,23 @@ def add_new_nodes_and_edges(G, new_chunks, new_embeddings, n_neighbors=5):
         new_node_id = existing_node_count + i
         G.add_node(new_node_id, **chunk)
 
-    all_embeddings = np.vstack([
-        np.array([G.nodes[n]['embedding'] for n in range(existing_node_count)]),
-        new_embeddings
-    ])
+    # Check if existing nodes have embeddings
+    existing_embeddings = []
+    for n in range(existing_node_count):
+        if 'embedding' in G.nodes[n]:
+            existing_embeddings.append(G.nodes[n]['embedding'])
+        else:
+            print(f"Warning: Node {n} doesn't have an embedding. Skipping.")
+
+    if existing_embeddings:
+        all_embeddings = np.vstack([np.array(existing_embeddings), new_embeddings])
+    else:
+        print("No existing embeddings found. Using only new embeddings.")
+        all_embeddings = new_embeddings
 
     # Compute nearest neighbors for new nodes
     print("Computing nearest neighbors for new nodes...")
-    nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='brute', metric='cosine').fit(all_embeddings)
+    nbrs = NearestNeighbors(n_neighbors=min(n_neighbors+1, len(all_embeddings)), algorithm='brute', metric='cosine').fit(all_embeddings)
     new_node_embeddings = all_embeddings[existing_node_count:]
     distances, indices = nbrs.kneighbors(new_node_embeddings)
 
@@ -71,9 +80,10 @@ def add_new_nodes_and_edges(G, new_chunks, new_embeddings, n_neighbors=5):
     for i, (distances_i, indices_i) in enumerate(tqdm(zip(distances, indices), total=len(new_chunks))):
         new_node_id = existing_node_count + i
         for j, dist in zip(indices_i[1:], distances_i[1:]):  # Skip the first one (itself)
-            similarity = 1 - dist
-            G.add_edge(new_node_id, j, weight=similarity)
-            G.add_edge(j, new_node_id, weight=similarity)  # Add reverse edge for symmetry
+            if j < len(G.nodes()):  # Ensure we're not trying to add edges to non-existent nodes
+                similarity = 1 - dist
+                G.add_edge(new_node_id, j, weight=similarity)
+                G.add_edge(j, new_node_id, weight=similarity)  # Add reverse edge for symmetry
 
     # count the number of nodes in the graph
     new_node_count = len(G.nodes()) - existing_node_count

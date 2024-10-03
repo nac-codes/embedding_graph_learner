@@ -111,6 +111,7 @@ def save_progress(graph_file_path, G, visited, context, silent=False):
             })
     if notes:
         notes_filename = os.path.join(graph_dir, f"{os.path.splitext(graph_filename)[0]}_notes.json")
+        print(f"Saving {len(notes)} notes to {notes_filename}")
         try:
             with open(notes_filename, 'w') as f:
                 json.dump(notes, f, indent=4)
