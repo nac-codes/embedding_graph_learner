@@ -38,10 +38,24 @@ def load_new_chunks_and_embeddings(corpora_dir, existing_files):
                         chunks = json.load(f)
                     embeddings = np.load(embeddings_file)
 
+                    # find the metadata for this node
+                    metadata_file = os.path.join(root, f"{base_name}.txt.met")
+                    if os.path.exists(metadata_file):
+                        with open(metadata_file, 'r') as f:
+                            metadata = json.load(f)
+                    else:
+                        metadata = {}
+
                     for i, chunk in enumerate(chunks):
                         chunk['file'] = base_name  # Add filename to chunk data
+                        # iterate through the metadata and add it to the chunk
+                        for key, value in metadata.items():
+                            chunk[key] = value
                         all_chunks.append(chunk)
                         all_embeddings.append(embeddings[i])
+                        # print(f" Chunk : {chunk}")
+                        # print(f" Metadata : {metadata}")
+                        # print(f" embeddings : {embeddings[i]}")
                 else:
                     print(f"Embeddings file {embeddings_file} not found. Skipping.")
     return all_chunks, np.array(all_embeddings)
@@ -53,7 +67,17 @@ def add_new_nodes_and_edges(G, new_chunks, new_embeddings, n_neighbors=5):
     # Add new nodes
     for i, chunk in enumerate(tqdm(new_chunks, desc="Adding new nodes", unit="node")):
         new_node_id = existing_node_count + i
-        G.add_node(new_node_id, **chunk)
+        G.add_node(new_node_id)
+        for key, value in chunk.items():
+            G.nodes[new_node_id][key] = value
+        
+        # add embedding to the node
+        G.nodes[new_node_id]['embedding'] = new_embeddings[i]
+
+        print(f"Sample new node data (node {new_node_id}):")
+        for key, value in G.nodes[new_node_id].items():
+            print(f"{key}: {value}")
+
 
     # Check if existing nodes have embeddings
     existing_embeddings = []

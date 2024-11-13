@@ -95,19 +95,21 @@ def save_progress(graph_file_path, G, visited, context, silent=False):
             author = data.get('author', 'Unknown')
             title = data.get('title', 'Unknown')
             date = data.get('publication_date', 'Unknown')
-            pages = data.get('pages', 'Unknown')
+            # pages = data.get('pages', 'Unknown')
             content = data.get('content', '')
-            
+            chunk_file = data.get('chunk_file', '')
+
             notes.append({
                 "node": int(node),  # Convert numpy.int64 to int
                 "file": data['file'],
-                "pages": pages,
+                # "pages": pages,
                 "author": author,
                 "title": title,
                 "publication_date": date,
                 "content": content,
                 "ai_explanation": ai_explanation,
-                "note": note
+                "note": note,
+                "chunk_file": chunk_file
             })
     if notes:
         notes_filename = os.path.join(graph_dir, f"{os.path.splitext(graph_filename)[0]}_notes.json")
@@ -139,30 +141,161 @@ def load_progress(graph_file_path):
             return set(), deque(maxlen=5)
     return set(), deque(maxlen=5)
 
+def find_most_similar_nodes(G, query, unvisited, client, top_k=15):
+    selected_authors = select_authors(G, query)
+
+    query_embedding = get_embedding(query, client)
+    if query_embedding is None:
+        return random.sample(list(unvisited), min(top_k, len(unvisited)))
+
+    similarities = []
+    for node in unvisited:
+        author = G.nodes[node].get('author', 'Unknown')
+        title = G.nodes[node].get('title', 'Unknown')
+        
+        if selected_authors and author not in selected_authors:
+            continue
+
+        content_embedding = G.nodes[node].get('embedding', None)
+        if content_embedding is None:
+            print(f"Node {node} has no embedding")
+            continue
+        
+        similarity = cosine_similarity(query_embedding, content_embedding)
+        content = G.nodes[node]['content']
+        similarities.append((node, similarity, content, author, title))
+
+    if not similarities:
+        print("No matching nodes found. Falling back to random selection.")
+        return random.sample(list(unvisited), min(top_k, len(unvisited)))
+
+    top_similarities = sorted(similarities, key=lambda x: x[1], reverse=True)[:top_k]
+
+    print(f"Number of similarities calculated: {len(similarities)}")
+    print(f"Top {top_k} similarities:")
+    for node, sim, _, author, title in top_similarities:
+        print(f"Node: {node}, Similarity: {sim:.4f}, Title: {title}, Author: {author}")
+
+    return top_similarities
+
+def select_top_quotes(query, top_similarities, client):
+    prompt = f"""Given the following user query and 15 potentially relevant text passages, 
+    select the 5 most relevant passages for a literature review. 
+    Prioritize both relevance to the query and diversity of opinion (different authors) if possible.
+    Explain your selection briefly, focusing on how each selected passage contributes to a comprehensive review.
+    Return the selected nodes in the following JSON format, NODE IDS:
+    {{
+        "selected_nodes": [<list of 5 selected node ids>]
+    }}
+
+    User query: {query}
+
+    Passages:
+    """
+    for i, (node, sim, content, author, title) in enumerate(top_similarities, 1):
+        prompt += f"\nNode {node}: {title} by {author}"
+        # get the middle 250 characters of the content
+        prompt += f"\n{content[len(content)//2-250:len(content)//2+250]}"
+
+    print(prompt)
+
+    response = query_openai(prompt, model_name="gpt-4o-mini")
+    print("GPT Quote Selection Response:", response)
+
+    try:
+        json_start = response.find("{")
+        json_end = response.rfind("}") + 1
+        response_json = json.loads(response[json_start:json_end])
+        selected_nodes = response_json.get("selected_nodes", [])
+        return [node for node, _, _, _, _ in top_similarities if node in selected_nodes]
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"Error parsing GPT response for quote selection: {e}")
+        return [node for node, _, _, _, _ in top_similarities[:5]]
+
+# def select_authors_and_titles(G, query, client):
+#     # Get unique authors and titles
+#     authors = set(data.get('author', 'Unknown') for _, data in G.nodes(data=True))
+#     titles = set(data.get('title', 'Unknown') for _, data in G.nodes(data=True))
+
+#     # Prepare prompt for GPT
+#     prompt = f"""Given the following user query and lists of authors and titles, 
+#     determine which authors and/or titles (if any) the user is likely interested in.
+#     If the query doesn't specify any particular authors or titles, return an empty list for both.
+#     Return your selection in the following JSON format:
+#     {{
+#         "authors": [<list of selected authors>],
+#         "titles": [<list of selected titles>]
+#     }}
+
+#     User query: {query}
+
+#     Authors:
+#     {', '.join(authors)}
+
+#     Titles:
+#     {', '.join(titles)}
+#     """
+
+#     # Get GPT's selection
+#     print(f"Author/Title Prompt: {prompt}")
+#     response = query_openai(prompt, model_name="gpt-4o-mini")
+#     print("GPT Author/Title Selection Response:", response)
+
+#     try:
+#         # Extract JSON from response
+#         json_start = response.find("{")
+#         json_end = response.rfind("}") + 1
+#         response_json = json.loads(response[json_start:json_end])
+        
+#         selected_authors = response_json.get("authors", [])
+#         selected_titles = response_json.get("titles", [])
+
+#         return selected_authors, selected_titles
+#     except (json.JSONDecodeError, ValueError) as e:
+#         print(f"Error parsing GPT response for author/title selection: {e}")
+#         return [], []
+
 def find_most_similar_node(G, query, unvisited, client, top_k=5):
+    # Use the new function to get selected authors and titles
+    selected_authors = select_authors(G, query)
+
     query_embedding = get_embedding(query, client)
     if query_embedding is None:
         return random.choice(list(unvisited))
 
     similarities = []
     for node in unvisited:
-        content_embedding = G.nodes[node]['embedding']
+        author = G.nodes[node].get('author', 'Unknown')        
+        
+        # Filter by selected authors or titles if any
+        if selected_authors and author not in selected_authors:
+            continue        
+
+        content_embedding = G.nodes[node].get('embedding', None)
         if content_embedding is None:
+            print(f"Node {node} has no embedding")
             continue
+        
         similarity = cosine_similarity(query_embedding, content_embedding)
         content = G.nodes[node]['content']
-        similarities.append((node, similarity, content))
+        similarities.append((node, similarity, content, author, title))
 
     if not similarities:
+        print("No matching nodes found. Falling back to random selection.")
         return random.choice(list(unvisited))
 
     # Sort by similarity and get top_k results
     top_similarities = sorted(similarities, key=lambda x: x[1], reverse=True)[:top_k]
 
+    print(f"Number of similarities calculated: {len(similarities)}")
+    print(f"Top {top_k} similarities:")
+    for node, sim, _, author, title in top_similarities:
+        print(f"Node: {node}, Similarity: {sim:.4f}, Title: {title}")
+
     # Prepare prompt for GPT
     prompt = f"""Given the following user query and {top_k} potentially relevant text passages, 
     select the passage that best answers the query. If none are particularly relevant, 
-    select the most informative passage related to the topic. Explain the relevence of each one and then return in the following json format
+    select the most informative passage related to the topic. Explain the relevance of each one and then return in the following json format. Remember to return the node_id
     {{
         "node": <node_id>
     }}
@@ -171,28 +304,55 @@ def find_most_similar_node(G, query, unvisited, client, top_k=5):
 
     Passages:
     """
-    for i, (node, sim, content) in enumerate(top_similarities, 1):
-        prompt += f"\n{i}. {content[:500]}..." # Truncate long contents
+    for i, (node, sim, content, author, title) in enumerate(top_similarities, 1):
+        prompt += f"\nNode {node}: {title} by {author}"
+        prompt += f"\n{content[:1500]}..." # Truncate long contents
 
-    
     print(prompt)
 
     # Get GPT's selection
-    response = query_openai(prompt, model_name="gpt-4o")
+    response = query_openai(prompt, model_name="gpt-4o-mini")
     print(response)
     try:
         # extract json from response find the section bookended by ```json and ```
         json_start = response.find("```json") + len("```json")
         json_end = response.find("```", json_start)
         response_json = json.loads(response[json_start:json_end])
-        best_index = response_json.get("node", 0) - 1
-        best_index = int(best_index) - 1
+        selected_node = response_json.get("node")
 
-        return top_similarities[best_index][0]
-    except (ValueError, IndexError):
+        # Find the corresponding node in top_similarities
+        for node, _, _, _, _ in top_similarities:
+            if node == selected_node:
+                return node
+
+        # If the selected node is not in top_similarities, fall back to the highest cosine similarity
+        print(f"Selected node {selected_node} not found in top similarities. Falling back to highest similarity.")
+        return top_similarities[0][0]
+    except (ValueError, IndexError, json.JSONDecodeError):
         # If GPT's response is not valid, fall back to the highest cosine similarity
+        print("Error parsing GPT response. Falling back to highest similarity.")
         return top_similarities[0][0]
 
+def select_authors(G, query):
+    # Get unique authors
+    authors = set(data.get('author', 'Unknown') for _, data in G.nodes(data=True))
+    
+    # Convert query to lowercase for case-insensitive matching. only include words that are capitalized
+    query_words = set(word.lower() for word in query.split() if len(word) > 2 and word[0].isupper())
+    
+    print(f"Authors: {authors}")
+    print(f"Query words: {query_words}")
+    
+    # Find matching authors
+    selected_authors = set()
+    for author in authors:
+        author_words = set(word.lower() for word in author.split() if len(word) > 2)
+        if any(word in query_words for word in author_words):
+            selected_authors.add(author)
+    
+    print(f"Selected authors: {selected_authors}")
+    
+    return list(selected_authors)
 
 def load_metadata(file_path):
     """
@@ -221,42 +381,29 @@ def learn_mode(G, graph_file_path, visited=None, context=None):
     current_node = None
 
     def explore_node(node, user_input=None):
+        nonlocal visited
         visited.add(node)
         input("Press Enter to continue...")
-        os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen
+        # os.system('cls' if os.name == 'nt' else 'clear')  # Clear screen
         content = G.nodes[node]['content']
         if len(context) > 0:
-            context_str = context[-1]
+            # get the latest context item and only the last 750 characters
+            context_str = context[-1][-750:]
         else:
             context_str = ""
 
         # Extract file info
         file_info = G.nodes[node]['file']
         pages = G.nodes[node]['pages']
-
-        # Attempt to locate the .txt.met file
-        # Assuming that the 'file' attribute contains the relative path to the .txt file
-        txt_file_path = None
-        # Search for the .txt.met file in the graph directory and subdirectories
-        for root, dirs, files in os.walk(graph_dir):
-            if file_info + '.txt.met' in files:
-                txt_file_path = os.path.join(root, file_info + '.txt')
-                break
-
-        # Load metadata from .txt.met file
-        if txt_file_path:
-            author, title, date = load_metadata(txt_file_path)
-        else:
-            author, title, date = 'Unknown', 'Unknown', 'Unknown'
-
-        # Save metadata to the node
-        G.nodes[node]['author'] = author
-        G.nodes[node]['title'] = title
-        G.nodes[node]['publication_date'] = date
+        author = G.nodes[node].get('author', 'Unknown')
+        title = G.nodes[node].get('title', 'Unknown')
+        date = G.nodes[node].get('publication_date', 'Unknown')
+        chunk_file = G.nodes[node].get('chunk_file', '')
 
         # Display node content with better formatting
         print(f"📖 **{title}** by *{author}* ({date})")
-        print(f"🗓️ Pages: {pages}")
+        # print(f"🗓️ Pages: {pages}")
+        print(f"Chunk file: {chunk_file}")
         print("\n---\n")
         print(f"{content}")
         print("\n---\n")
@@ -277,13 +424,16 @@ def learn_mode(G, graph_file_path, visited=None, context=None):
 
                 if user_input:
                     prompt = f"""
-You are a PhD in History. You are are answering the following request: {user_input} using the content below.
-The author of the content is {author}. The book the content is from is {title}. The publication date is {date}.
+You are a PhD in History. You are creating a literature review on the following topic: "{user_input}". This quote is one part of the literature review. Just provide an anlysis of this quote as it relates to the topic.
+The author of the content is {author}. The book the content is from is "{title}". The publication date is {date}.
 
-Content:
+Context (the last part of the literature review you were writing):
+{context_str}
+
+Content to analyze now:
 {content}
 
-You should respond to the request in an extremely detailed manner. Provide an answer and back it up with quoted evidence from the text.
+You should respond to the request in an extremely detailed manner. Provide an answer and back it up with quoted evidence from the text. Make the quotes lenghty.
 """
                 else:
                     prompt = f"""
@@ -350,25 +500,51 @@ Provide an explanation of the above content, and provide further detailed contex
 
         if user_input:
             # Generate a keyword query using OpenAI
-            prompt = f"Generate a search string for RAG based on the following request. it should have a similar length to the request: {user_input}."
-            keyword_query = query_openai(prompt)
+            prompt = f"Generate a search string for RAG based on the following request. Keep the full length of the request! it should have a similar length to the request: {user_input}. JUST RETURN THE STRING, NO OTHER TEXT."
+            keyword_query = query_openai(prompt, model_name="gpt-4o-mini")
             print(f"\nSearching for: {keyword_query}")
 
-            next_node = find_most_similar_node(G, keyword_query, unvisited, client)
-            print(f"\nFound a relevant section.")
-            current_node = explore_node(next_node, user_input)
+            single_or_multiple = 1 # 0 for single, 1 for multiple
+            if single_or_multiple == 0:
+                next_node = find_most_similar_node(G, keyword_query, unvisited, client)
+                print(f"\nSelected node: {next_node}")
+                print(f"Node content: {G.nodes[next_node]['content'][:100]}...")
+                print(f"\nFound a relevant section.")
+                current_node = explore_node(next_node, user_input)
+            else:
+                # make it so that it selects from all nodes, not just unvisited
+                top_similarities = find_most_similar_nodes(G, keyword_query, list(G.nodes()), client)
+                selected_nodes = select_top_quotes(keyword_query, top_similarities, client)
+                
+                print(f"\nSelected nodes for literature review: {selected_nodes}")
+                for node in selected_nodes:
+                    current_node = explore_node(node, user_input)
+                    if current_node is None:  # If explore_node returns None, it means the user wants to quit
+                        save_progress(graph_file_path, G, visited, context)
+                        return                
+            
+            
         else:
             # Continue to a connected node or random unvisited node
-            neighbors = list(G.neighbors(current_node))
-            unvisited_neighbors = [n for n in neighbors if n in unvisited]
-            if unvisited_neighbors:
-                next_node = random.choice(unvisited_neighbors)
-                print("\nMoving to a connected section.")
-            else:
-                next_node = random.choice(list(unvisited))
-                print("\nMoving to a new random section.")
+            unvisited = set(G.nodes()) - visited  # Recalculate unvisited set
+            # if current_node is not None:
+            #     neighbors = list(G.neighbors(current_node))
+            #     unvisited_neighbors = [n for n in neighbors if n in unvisited]
+            #     if unvisited_neighbors:
+            #         next_node = random.choice(unvisited_neighbors)
+            #         print("\nMoving to a connected section.")
+            #     else:
+            #         next_node = random.choice(list(unvisited))
+            #         print("\nMoving to a new random section.")
+            # else:
+            next_node = random.choice(list(unvisited))
+            print("\nStarting with a random section.")
 
             current_node = explore_node(next_node)
+            # Add debug prints
+            print(f"Visited nodes: {visited}")
+            print(f"Current node: {current_node}")
+            print(f"Unvisited nodes: {set(G.nodes()) - visited}")
 
     print("\nLearning session complete.")
     print(f"Total nodes explored: {len(visited)} out of {len(G.nodes())}")

@@ -4,6 +4,8 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 import json
+import time
+from tenacity import retry, stop_after_attempt, wait_exponential
 from openai import OpenAI
 
 client = OpenAI()
@@ -91,15 +93,40 @@ def create_chunks(pages, chunk_size, overlap_ratio):
 
     return chunks
 
-def get_embedding(text, model_name="text-embedding-ada-002"):
+# def get_embedding(text, model_name="text-embedding-ada-002"):
+#     text = text.replace("\n", " ")
+#     try:
+#         response = client.embeddings.create(input=[text], model=model_name)
+#         return np.array(response.data[0].embedding)
+#     except Exception as e:
+#         print(f"Error when processing text: {text[:50]}...")
+#         print(f"API returned an error: {e}")
+#         return None
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+def get_embedding_with_retry(text, model_name="text-embedding-ada-002"):
     text = text.replace("\n", " ")
     try:
-        response = client.embeddings.create(input=[text], model=model_name)
+        response = client.embeddings.create(input=[text], model=model_name, timeout=10)
         return np.array(response.data[0].embedding)
     except Exception as e:
         print(f"Error when processing text: {text[:50]}...")
         print(f"API returned an error: {e}")
-        return None
+        raise  # This will trigger a retry
+
+def get_embedding(text, model_name="text-embedding-ada-002"):
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            return get_embedding_with_retry(text, model_name)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"Failed to get embedding after {max_retries} attempts.")
+                return None
+            else:
+                print(f"Attempt {attempt + 1} failed. Retrying...")
+                time.sleep(5)  # Wait for 5 seconds before retrying
 
 def process_txt_file(txt_file_path, output_dir, chunk_size, overlap_ratio):
     print(f"Processing {txt_file_path}...")
@@ -119,6 +146,7 @@ def process_txt_file(txt_file_path, output_dir, chunk_size, overlap_ratio):
             chunk_embeddings.append(embedding)
         else:
             chunk_embeddings.append(np.zeros(1536))  # Assuming embedding size of 1536
+        time.sleep(0.1)
 
     # Save chunks and embeddings
     base_filename = os.path.splitext(os.path.basename(txt_file_path))[0]

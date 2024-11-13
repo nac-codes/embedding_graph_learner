@@ -30,13 +30,21 @@ def get_text_density(pdf_path):
     """
     char_count = 0
     page_count = 0
-    with open(pdf_path, 'rb') as file:
-        reader = PyPDF2.PdfReader(file)
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                char_count += len(text.strip())
-                page_count += 1
+    try:
+        with open(pdf_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            for page in reader.pages:
+                try:
+                    text = page.extract_text()
+                    if text:
+                        char_count += len(text.strip())
+                        page_count += 1
+                except Exception as e:
+                    print(f"Error extracting text from page in {pdf_path}: {str(e)}")
+                    continue
+    except Exception as e:
+        print(f"Error processing PDF {pdf_path}: {str(e)}")
+        return 0  # Return 0 to indicate an error occurred
     return char_count / page_count if page_count > 0 else 0
 
 def extract_metadata(text, filename):
@@ -56,6 +64,7 @@ Please respond in JSON format with the following structure:
     "publisher": "Publisher name or Unknown"
 }}
 """
+    print(f"Prompt: {prompt}")
     response = query_openai(prompt)
     # Strip response of ```json and ``` if they are there
     response = response.replace("```json", "").replace("```", "")
@@ -97,7 +106,14 @@ def ocr_pdf_to_text(pdf_path):
     # Define a threshold for average characters per page (e.g., 100)
     avg_chars_per_page_threshold = 200
 
-    if get_text_density(pdf_path) < avg_chars_per_page_threshold:
+    text_density = get_text_density(pdf_path)
+    if text_density == 0:
+        print(f"Unable to process {pdf_filename}. Skipping to OCR.")
+        use_ocr = True
+    else:
+        use_ocr = text_density < avg_chars_per_page_threshold
+
+    if use_ocr:
         pages = convert_from_path(pdf_path, 300)
         extracted_text = ""
         for page_num, page_img in enumerate(tqdm(pages, desc="Performing OCR", unit="page")):
